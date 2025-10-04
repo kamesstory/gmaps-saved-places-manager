@@ -1,9 +1,22 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const os = require('os');
 
 class BrowserManager {
-  constructor(userDataDir = './browser-data') {
-    this.userDataDir = path.resolve(userDataDir);
+  constructor(userDataDir = null, useRealProfile = false) {
+    if (useRealProfile) {
+      // Use real Chrome profile to avoid bot detection
+      const homeDir = os.homedir();
+      if (process.platform === 'darwin') {
+        this.userDataDir = path.join(homeDir, 'Library/Application Support/Google/Chrome');
+      } else if (process.platform === 'win32') {
+        this.userDataDir = path.join(homeDir, 'AppData/Local/Google/Chrome/User Data');
+      } else {
+        this.userDataDir = path.join(homeDir, '.config/google-chrome');
+      }
+    } else {
+      this.userDataDir = path.resolve(userDataDir || './browser-data');
+    }
     this.context = null;
     this.page = null;
   }
@@ -14,19 +27,21 @@ class BrowserManager {
    */
   async launch(headless = false) {
     console.log('Launching browser...');
+    console.log(`Using profile: ${this.userDataDir}`);
 
     this.context = await chromium.launchPersistentContext(this.userDataDir, {
       headless,
       channel: 'chrome', // Use installed Chrome if available
-      viewport: { width: 1280, height: 720 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1400, height: 900 },
       args: [
         '--disable-blink-features=AutomationControlled', // Hide automation
-      ]
+      ],
+      timeout: 180000 // 3 minutes timeout
     });
 
-    // Create a new page
-    this.page = await this.context.newPage();
+    // Use existing page if available
+    const pages = this.context.pages();
+    this.page = pages.length > 0 ? pages[0] : await this.context.newPage();
 
     console.log('Browser launched successfully');
     return this.page;
@@ -42,22 +57,27 @@ class BrowserManager {
 
     console.log('Navigating to Google Maps saved places...');
     await this.page.goto('https://www.google.com/maps/saved', {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
-    // Wait a bit for dynamic content to load
-    await this.page.waitForTimeout(2000);
+    // Wait for dynamic content to load
+    console.log('Waiting for content to load...');
+    await this.page.waitForTimeout(5000);
 
-    // Check if we need to log in
-    const isLoggedIn = await this.checkIfLoggedIn();
-    if (!isLoggedIn) {
-      console.log('\n⚠️  You need to log in to Google Maps manually.');
-      console.log('Please log in in the browser window and press Enter when done...');
+    // Check if we're actually logged in and on the right page
+    const title = await this.page.title();
+    const url = this.page.url();
 
-      // Wait for user to log in manually
-      // In a real implementation, you might want to use readline or similar
-      await this.page.waitForTimeout(60000); // Give user 60 seconds
+    if (title.includes('Error') || title.includes('404') || url.includes('ServiceLogin')) {
+      console.log('\n⚠️  NOT LOGGED IN or PAGE FAILED TO LOAD');
+      console.log(`Current URL: ${url}`);
+      console.log(`Page Title: ${title}`);
+      console.log('\nPossible issues:');
+      console.log('1. Google detected automation - Make sure Chrome is fully closed before running');
+      console.log('2. Not logged in - Log in manually and try again');
+      console.log('3. Network issue - Check your connection\n');
+      throw new Error('Failed to access Google Maps saved places');
     }
 
     console.log('Successfully navigated to saved places');

@@ -16,10 +16,15 @@ async function main() {
   console.log('Google Maps Saved Places Sync');
   console.log('='.repeat(60));
   console.log(`Sync type: ${fullSync ? 'FULL' : 'INCREMENTAL'}`);
+  console.log('\n⚠️  IMPORTANT: Close all Chrome windows before continuing!');
+  console.log('Press Ctrl+C to cancel, or wait 5 seconds to continue...\n');
   console.log('='.repeat(60));
 
+  // Give user time to close Chrome
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
   const db = new GMapsDatabase();
-  const browserManager = new BrowserManager();
+  const browserManager = new BrowserManager(null, true); // Use real Chrome profile
   const scraper = new GoogleMapsScraper(browserManager, db);
 
   try {

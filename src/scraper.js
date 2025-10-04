@@ -20,14 +20,13 @@ class GoogleMapsScraper {
     console.log('Fetching list names...');
 
     // Wait for lists to load
-    await this.page.waitForTimeout(2000);
+    await this.page.waitForTimeout(3000);
 
-    // TODO: Update these selectors based on actual Google Maps DOM structure
-    // This is a placeholder that needs to be adjusted after inspecting the page
-    const lists = await this.page.$$eval('[role="list"] [role="listitem"]', (items) => {
-      return items.map(item => {
-        // Extract list name - needs to be adjusted based on actual structure
-        const nameElement = item.querySelector('h2, h3, [class*="title"]');
+    // Find all list buttons (based on inspection findings)
+    const lists = await this.page.$$eval('button.CsEnBe', (buttons) => {
+      return buttons.map(button => {
+        // Extract list name from the div.Io6YTe element
+        const nameElement = button.querySelector('div.Io6YTe.fontBodyLarge');
         return nameElement ? nameElement.textContent.trim() : null;
       }).filter(Boolean);
     });
@@ -42,13 +41,16 @@ class GoogleMapsScraper {
   async navigateToList(listName) {
     console.log(`Navigating to list: ${listName}`);
 
-    // TODO: Find and click on the list
-    // This is a placeholder that needs actual selectors
-    const listButton = await this.page.$(`text="${listName}"`);
-    if (listButton) {
-      await listButton.click();
-      await this.page.waitForTimeout(2000);
-      return true;
+    // Find the list button that contains this name
+    const listButtons = await this.page.$$('button.CsEnBe');
+
+    for (const button of listButtons) {
+      const text = await button.textContent();
+      if (text && text.includes(listName)) {
+        await button.click();
+        await this.page.waitForTimeout(3000); // Wait for places to load
+        return true;
+      }
     }
 
     console.warn(`Could not find list: ${listName}`);
@@ -66,22 +68,31 @@ class GoogleMapsScraper {
     let scrollAttempts = 0;
     const maxScrollAttempts = limit ? Math.ceil(limit / 10) : 50; // Adjust based on items per scroll
 
-    // TODO: Update these selectors based on actual Google Maps DOM structure
+    // Based on inspection: places are in div.m6QErb.XiKgde containers
     while (scrollAttempts < maxScrollAttempts) {
       // Get currently visible places
-      const newPlaces = await this.page.$$eval('[data-place-id], [data-item-id]', (items) => {
-        return items.map(item => {
+      const newPlaces = await this.page.$$eval('div.m6QErb.XiKgde', (items) => {
+        return items.map((item, index) => {
           try {
-            // Extract place information - adjust selectors as needed
-            const placeId = item.getAttribute('data-place-id') || item.getAttribute('data-item-id');
-            const nameElement = item.querySelector('h3, [class*="name"]');
+            // Extract place name from div.fontHeadlineSmall.rZF81c
+            const nameElement = item.querySelector('div.fontHeadlineSmall.rZF81c');
             const name = nameElement ? nameElement.textContent.trim() : 'Unknown';
 
-            const linkElement = item.querySelector('a[href*="maps"]');
-            const url = linkElement ? linkElement.href : null;
+            // Get the button element which contains the place data
+            const placeButton = item.querySelector('button.SMP2wb.fHEb6e');
 
-            const notesElement = item.querySelector('[class*="note"], [class*="description"]');
-            const notes = notesElement ? notesElement.textContent.trim() : null;
+            // Generate a unique ID from the name since there's no data-place-id
+            // We'll use the button's jslog metadata if available, or fall back to name
+            const jslogAttr = placeButton?.getAttribute('jslog');
+            const placeId = jslogAttr ? jslogAttr.match(/metadata:\[([^\]]+)\]/)?.[1] : `place_${index}_${name.replace(/\s+/g, '_')}`;
+
+            // Try to extract URL from button onclick or jsaction
+            // For now, we'll construct it from the place name as a fallback
+            const url = `https://www.google.com/maps/search/${encodeURIComponent(name)}`;
+
+            // Get notes from textarea
+            const notesElement = item.querySelector('textarea.MP5iJf[aria-label="Note"]');
+            const notes = notesElement ? notesElement.value.trim() : null;
 
             return {
               google_place_id: placeId,

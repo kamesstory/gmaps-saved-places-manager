@@ -21,3 +21,6 @@ screenshots/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Inspection output
+inspection/
