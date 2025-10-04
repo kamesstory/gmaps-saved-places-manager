@@ -24,3 +24,6 @@ Thumbs.db
 
 # Inspection output
 inspection/
+
+# Seed data
+seed/
