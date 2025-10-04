@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Database
+db/*.db
+db/*.db-shm
+db/*.db-wal
+
+# Browser data (contains login session)
+browser-data/
+
+# Screenshots
+screenshots/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+{
+  "name": "gmaps-saved-places-manager",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "sync": "node scripts/sync.js",
+    "sync:full": "node scripts/sync.js --full",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "playwright": "^1.55.1"
+  }
+}
