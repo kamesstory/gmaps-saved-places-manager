@@ -55,29 +55,39 @@ class BrowserManager {
       throw new Error('Browser not launched. Call launch() first.');
     }
 
-    console.log('Navigating to Google Maps saved places...');
-    await this.page.goto('https://www.google.com/maps/saved', {
+    // First navigate to Google Maps main page
+    console.log('Navigating to Google Maps...');
+    await this.page.goto('https://google.com/maps', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
-    // Wait for dynamic content to load
-    console.log('Waiting for content to load...');
+    // Wait for page to load
+    console.log('Waiting for Maps to load...');
     await this.page.waitForTimeout(5000);
 
-    // Check if we're actually logged in and on the right page
-    const title = await this.page.title();
-    const url = this.page.url();
+    // Now click the "Saved" button
+    console.log('Clicking "Saved" button...');
 
-    if (title.includes('Error') || title.includes('404') || url.includes('ServiceLogin')) {
-      console.log('\n⚠️  NOT LOGGED IN or PAGE FAILED TO LOAD');
-      console.log(`Current URL: ${url}`);
-      console.log(`Page Title: ${title}`);
-      console.log('\nPossible issues:');
-      console.log('1. Google detected automation - Make sure Chrome is fully closed before running');
-      console.log('2. Not logged in - Log in manually and try again');
-      console.log('3. Network issue - Check your connection\n');
-      throw new Error('Failed to access Google Maps saved places');
+    try {
+      // Wait for the Saved button to appear
+      await this.page.waitForSelector('button.wR3cXd.fontLabelMedium', { timeout: 10000 });
+
+      // Find the Saved button by jsaction
+      const savedButton = await this.page.$('button[jsaction*="navigationrail.saved"]');
+
+      if (savedButton) {
+        await savedButton.click();
+        console.log('✅ Clicked Saved button');
+        await this.page.waitForTimeout(5000); // Wait for saved places to load
+      } else {
+        throw new Error('Could not find Saved button');
+      }
+    } catch (error) {
+      console.log('\n⚠️  Could not automatically click Saved button');
+      console.log('Please manually click "Saved" in the browser sidebar.');
+      console.log('Waiting 20 seconds...\n');
+      await this.page.waitForTimeout(20000);
     }
 
     console.log('Successfully navigated to saved places');
