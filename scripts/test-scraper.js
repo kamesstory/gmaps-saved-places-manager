@@ -4,8 +4,12 @@ const BrowserManager = require("../src/browser");
 
 /**
  * Test scraper - validates selectors without full sync
+ * Usage: node scripts/test-scraper.js [--no-wait]
  */
 async function main() {
+  const args = process.argv.slice(2);
+  const autoClose = args.includes('--no-wait');
+
   console.log("=".repeat(60));
   console.log("Google Maps Scraper Test");
   console.log("=".repeat(60));
@@ -191,10 +195,15 @@ async function main() {
       console.log("3. Update selectors in src/scraper.js");
     }
 
-    console.log(
-      "\nBrowser will stay open for 180 seconds for manual inspection..."
-    );
-    await page.waitForTimeout(180000);
+    if (!autoClose) {
+      console.log(
+        "\nBrowser will stay open for 180 seconds for manual inspection..."
+      );
+      console.log("(Use --no-wait flag to auto-close)");
+      await page.waitForTimeout(180000);
+    } else {
+      console.log("\n✅ Auto-closing browser...");
+    }
   } catch (error) {
     console.error("\n❌ Test failed:", error.message);
     console.error(error.stack);

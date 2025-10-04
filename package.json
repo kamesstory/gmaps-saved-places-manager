@@ -6,7 +6,9 @@
     "sync": "node scripts/sync.js",
     "sync:full": "node scripts/sync.js --full",
     "inspect": "node scripts/inspect-simple.js",
-    "test": "node scripts/test-scraper.js"
+    "test": "node scripts/test-scraper.js",
+    "test:quick": "node scripts/test-scraper.js --no-wait",
+    "debug": "node scripts/debug-place-structure.js"
   },
   "keywords": [],
   "author": "",
