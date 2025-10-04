@@ -15,6 +15,7 @@ class GoogleMapsScraper {
 
   /**
    * Get all list names from the saved places page
+   * Uses stable attributes instead of CSS classes for robustness
    */
   async getListNames() {
     console.log('Fetching list names...');
@@ -22,12 +23,41 @@ class GoogleMapsScraper {
     // Wait for lists to load
     await this.page.waitForTimeout(3000);
 
-    // Find all list buttons (based on inspection findings)
-    const lists = await this.page.$$eval('button.CsEnBe', (buttons) => {
+    // Find all list buttons - use jsaction attribute (more stable than classes)
+    const lists = await this.page.$$eval('button[jsaction*="pane.wfvdle"]', (buttons) => {
       return buttons.map(button => {
-        // Extract list name from the div.Io6YTe element
-        const nameElement = button.querySelector('div.Io6YTe.fontBodyLarge');
-        return nameElement ? nameElement.textContent.trim() : null;
+        // Try multiple strategies to extract list name
+        let name = null;
+
+        // Strategy 1: Look for div with fontBodyLarge class
+        let nameElement = button.querySelector('div[class*="fontBodyLarge"]');
+        if (nameElement) {
+          name = nameElement.textContent.trim();
+        }
+
+        // Strategy 2: Find the largest text node in the button (likely the list name)
+        if (!name) {
+          const allDivs = Array.from(button.querySelectorAll('div'));
+          const textDivs = allDivs
+            .filter(div => div.textContent.length > 0 && div.textContent.length < 100)
+            .filter(div => !div.textContent.includes('·')) // Exclude metadata like "Private · 2,104 places"
+            .filter(div => !div.querySelector('*')); // No nested elements
+
+          if (textDivs.length > 0) {
+            // Get the first substantial text
+            name = textDivs[0].textContent.trim();
+          }
+        }
+
+        // Strategy 3: Get first line of button text
+        if (!name && button.textContent) {
+          const firstLine = button.textContent.trim().split('\n')[0];
+          if (firstLine && !firstLine.includes('·') && firstLine.length < 50) {
+            name = firstLine;
+          }
+        }
+
+        return name;
       }).filter(Boolean);
     });
 
@@ -68,38 +98,43 @@ class GoogleMapsScraper {
     let scrollAttempts = 0;
     const maxScrollAttempts = limit ? Math.ceil(limit / 10) : 50; // Adjust based on items per scroll
 
-    // Based on inspection: places are in div.m6QErb.XiKgde containers
+    // Find place containers - use jsaction attribute (more stable than specific classes)
+    // All real places have buttons with jsaction containing "pane.wfvdle" and jslog with metadata
     while (scrollAttempts < maxScrollAttempts) {
       // Get currently visible places
-      const newPlaces = await this.page.$$eval('div.m6QErb.XiKgde', (items) => {
-        return items.map((item, index) => {
+      const newPlaces = await this.page.$$eval('button[jsaction*="pane.wfvdle"][jslog*="metadata"]', (buttons) => {
+        return buttons.map((placeButton, index) => {
           try {
-            // FILTER: Only process items that have the place button (real places)
-            const placeButton = item.querySelector('button.SMP2wb.fHEb6e');
-            if (!placeButton) {
-              return null; // Skip non-place items (headers, skeletons, etc.)
+            // Additional filter: must have jslog with metadata (real places)
+            const jslogAttr = placeButton.getAttribute('jslog');
+            if (!jslogAttr || !jslogAttr.includes('metadata')) {
+              return null;
             }
 
             // Extract place name - try multiple strategies for robustness
             let name = null;
 
-            // Strategy 1: div.fontHeadlineSmall.rZF81c (most reliable)
-            let nameElement = item.querySelector('div.fontHeadlineSmall.rZF81c');
+            // Strategy 1: div with class containing "fontHeadlineSmall" (most reliable but flexible)
+            let nameElement = placeButton.querySelector('div[class*="fontHeadlineSmall"]');
             if (nameElement) {
               name = nameElement.textContent.trim();
             }
 
-            // Strategy 2: Any div.fontHeadlineSmall
-            if (!name) {
-              nameElement = item.querySelector('div.fontHeadlineSmall');
-              if (nameElement) name = nameElement.textContent.trim();
-            }
-
-            // Strategy 3: Extract from button text (first line)
+            // Strategy 2: Extract from button text (first line, before rating)
             if (!name && placeButton.textContent) {
               const buttonText = placeButton.textContent.trim().split('\n')[0];
-              if (buttonText && buttonText.length > 0 && buttonText.length < 100) {
-                name = buttonText;
+              // Extract text before rating (e.g., "Restaurant4.5" -> "Restaurant")
+              const textBeforeRating = buttonText.split(/\d\.\d/)[0];
+              if (textBeforeRating && textBeforeRating.length > 0 && textBeforeRating.length < 100) {
+                name = textBeforeRating.trim();
+              }
+            }
+
+            // Strategy 3: Look for any header-like element (h1-h6) or div with "headline" in class
+            if (!name) {
+              nameElement = placeButton.querySelector('h1, h2, h3, h4, h5, h6, div[class*="headline"]');
+              if (nameElement) {
+                name = nameElement.textContent.trim().split('\n')[0];
               }
             }
 
@@ -108,18 +143,18 @@ class GoogleMapsScraper {
               return null;
             }
 
-            // Generate a unique ID from the button's jslog metadata if available
-            const jslogAttr = placeButton.getAttribute('jslog');
-            const placeId = jslogAttr ? jslogAttr.match(/metadata:\[([^\]]+)\]/)?.[1] : `place_${index}_${name.replace(/\s+/g, '_')}`;
+            // Generate a unique ID from the button's jslog metadata
+            const placeId = jslogAttr.match(/metadata:\[([^\]]+)\]/)?.[1] || `place_${index}_${name.replace(/\s+/g, '_')}`;
 
             // Try to extract URL from button onclick or jsaction
             // For now, we'll construct it from the place name as a fallback
             const url = `https://www.google.com/maps/search/${encodeURIComponent(name)}`;
 
-            // Get notes from textarea - use robust selector
-            const notesElement = item.querySelector('textarea.MP5iJf[aria-label="Note"]') ||
-                                item.querySelector('textarea[aria-label="Note"]') ||
-                                item.querySelector('textarea');
+            // Get notes from textarea - use stable aria-label attribute
+            const container = placeButton.closest('div');
+            const notesElement = container?.querySelector('textarea[aria-label="Note"]') ||
+                                container?.querySelector('textarea[maxlength="4000"]') ||
+                                container?.querySelector('textarea');
             const notes = notesElement ? notesElement.value.trim() : null;
 
             return {
