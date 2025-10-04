@@ -148,10 +148,22 @@ class GoogleMapsScraper {
         break;
       }
 
-      // Scroll down to load more
+      // Scroll down to load more (robust scroll strategy)
       const previousCount = places.length;
       await this.page.evaluate(() => {
-        const scrollContainer = document.querySelector('[role="feed"], [class*="scroll"]');
+        // Try multiple scroll container strategies
+        let scrollContainer = document.querySelector('[role="feed"]');
+
+        if (!scrollContainer) {
+          // Find the scrollable div that contains places
+          const allDivs = Array.from(document.querySelectorAll('div'));
+          scrollContainer = allDivs.find(div => {
+            const style = window.getComputedStyle(div);
+            return (style.overflowY === 'scroll' || style.overflowY === 'auto') &&
+                   div.scrollHeight > div.clientHeight;
+          });
+        }
+
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight;
         } else {
