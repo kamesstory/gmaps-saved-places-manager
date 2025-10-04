@@ -74,24 +74,52 @@ class GoogleMapsScraper {
       const newPlaces = await this.page.$$eval('div.m6QErb.XiKgde', (items) => {
         return items.map((item, index) => {
           try {
-            // Extract place name from div.fontHeadlineSmall.rZF81c
-            const nameElement = item.querySelector('div.fontHeadlineSmall.rZF81c');
-            const name = nameElement ? nameElement.textContent.trim() : 'Unknown';
-
-            // Get the button element which contains the place data
+            // FILTER: Only process items that have the place button (real places)
             const placeButton = item.querySelector('button.SMP2wb.fHEb6e');
+            if (!placeButton) {
+              return null; // Skip non-place items (headers, skeletons, etc.)
+            }
 
-            // Generate a unique ID from the name since there's no data-place-id
-            // We'll use the button's jslog metadata if available, or fall back to name
-            const jslogAttr = placeButton?.getAttribute('jslog');
+            // Extract place name - try multiple strategies for robustness
+            let name = null;
+
+            // Strategy 1: div.fontHeadlineSmall.rZF81c (most reliable)
+            let nameElement = item.querySelector('div.fontHeadlineSmall.rZF81c');
+            if (nameElement) {
+              name = nameElement.textContent.trim();
+            }
+
+            // Strategy 2: Any div.fontHeadlineSmall
+            if (!name) {
+              nameElement = item.querySelector('div.fontHeadlineSmall');
+              if (nameElement) name = nameElement.textContent.trim();
+            }
+
+            // Strategy 3: Extract from button text (first line)
+            if (!name && placeButton.textContent) {
+              const buttonText = placeButton.textContent.trim().split('\n')[0];
+              if (buttonText && buttonText.length > 0 && buttonText.length < 100) {
+                name = buttonText;
+              }
+            }
+
+            // Skip if we still couldn't find a name
+            if (!name || name.length === 0) {
+              return null;
+            }
+
+            // Generate a unique ID from the button's jslog metadata if available
+            const jslogAttr = placeButton.getAttribute('jslog');
             const placeId = jslogAttr ? jslogAttr.match(/metadata:\[([^\]]+)\]/)?.[1] : `place_${index}_${name.replace(/\s+/g, '_')}`;
 
             // Try to extract URL from button onclick or jsaction
             // For now, we'll construct it from the place name as a fallback
             const url = `https://www.google.com/maps/search/${encodeURIComponent(name)}`;
 
-            // Get notes from textarea
-            const notesElement = item.querySelector('textarea.MP5iJf[aria-label="Note"]');
+            // Get notes from textarea - use robust selector
+            const notesElement = item.querySelector('textarea.MP5iJf[aria-label="Note"]') ||
+                                item.querySelector('textarea[aria-label="Note"]') ||
+                                item.querySelector('textarea');
             const notes = notesElement ? notesElement.value.trim() : null;
 
             return {

@@ -80,35 +80,67 @@ async function main() {
       });
     }
 
-    // Test 2: Click first list and get places
+    // Test 2: Click "Want to go" list (or first list if not found)
     if (lists.length > 0) {
       console.log("\n[4/4] Testing place detection...");
       console.log("-".repeat(60));
-      console.log(`Clicking on first list: "${lists[0]}"...`);
 
-      // Find and click the first list button
+      // Try to find "Want to go" list
+      let targetList = "Want to go";
+      let targetIndex = lists.findIndex(list => list.toLowerCase().includes("want to go"));
+
+      if (targetIndex === -1) {
+        targetIndex = 0;
+        targetList = lists[0];
+        console.log(`⚠️  "Want to go" not found, using first list: "${targetList}"`);
+      } else {
+        console.log(`Clicking on list: "${targetList}" (index ${targetIndex})...`);
+      }
+
+      // Find and click the target list button
       const listButtons = await page.$$("button.CsEnBe");
-      if (listButtons.length > 0) {
-        await listButtons[0].click();
+      if (listButtons.length > targetIndex) {
+        await listButtons[targetIndex].click();
         await page.waitForTimeout(5000); // Wait for places to load
 
-        // Try to get places
+        // Try to get places (with robust selectors)
         const places = await page.$$eval("div.m6QErb.XiKgde", (items) => {
-          return items.slice(0, 5).map((item, index) => {
+          return items.map((item, index) => {
             try {
-              const nameElement = item.querySelector(
-                "div.fontHeadlineSmall.rZF81c"
-              );
-              const name = nameElement
-                ? nameElement.textContent.trim()
-                : "Unknown";
-
+              // Only process real places (those with the place button)
               const placeButton = item.querySelector("button.SMP2wb.fHEb6e");
-              const jslogAttr = placeButton?.getAttribute("jslog");
+              if (!placeButton) {
+                return null; // Skip non-place items
+              }
 
-              const notesElement = item.querySelector(
-                'textarea.MP5iJf[aria-label="Note"]'
-              );
+              // Extract name with fallback strategies
+              let name = null;
+              let nameElement = item.querySelector("div.fontHeadlineSmall.rZF81c");
+              if (nameElement) {
+                name = nameElement.textContent.trim();
+              }
+
+              if (!name) {
+                nameElement = item.querySelector("div.fontHeadlineSmall");
+                if (nameElement) name = nameElement.textContent.trim();
+              }
+
+              if (!name && placeButton.textContent) {
+                const buttonText = placeButton.textContent.trim().split('\n')[0];
+                if (buttonText && buttonText.length > 0 && buttonText.length < 100) {
+                  name = buttonText;
+                }
+              }
+
+              if (!name) {
+                return null; // Skip if no name found
+              }
+
+              const jslogAttr = placeButton.getAttribute("jslog");
+
+              const notesElement = item.querySelector('textarea.MP5iJf[aria-label="Note"]') ||
+                                  item.querySelector('textarea[aria-label="Note"]') ||
+                                  item.querySelector('textarea');
               const notes = notesElement ? notesElement.value.trim() : null;
 
               return {
@@ -121,7 +153,7 @@ async function main() {
             } catch (error) {
               return { error: error.message };
             }
-          });
+          }).filter(Boolean).slice(0, 5); // Get first 5 real places
         });
 
         if (places.length === 0) {
@@ -144,33 +176,77 @@ async function main() {
         }
 
         // Try scrolling and see if we get more
-        console.log("\n📜 Testing scroll behavior...");
-        const countBefore = places.length;
+        console.log("\n📜 Testing scroll behavior and virtualization...");
 
-        await page.evaluate(() => {
-          const scrollContainer = document.querySelector(
-            '[role="feed"], [class*="scroll"]'
-          );
-          if (scrollContainer) {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight;
-          } else {
-            window.scrollTo(0, document.body.scrollHeight);
-          }
+        // Count real places before scroll
+        let realPlacesBefore = await page.$$eval("div.m6QErb.XiKgde", (items) => {
+          return items.filter(item => !!item.querySelector("button.SMP2wb.fHEb6e")).length;
         });
 
-        await page.waitForTimeout(3000);
+        console.log(`   Real places before scroll: ${realPlacesBefore}`);
 
-        const placesAfterScroll = await page.$$("div.m6QErb.XiKgde");
-        console.log(`   Before scroll: ${countBefore} places`);
-        console.log(`   After scroll: ${placesAfterScroll.length} places`);
+        // Scroll multiple times to test virtualization
+        for (let i = 0; i < 3; i++) {
+          const scrollInfo = await page.evaluate(() => {
+            // Try multiple scroll container strategies
+            let scrollContainer = document.querySelector('[role="feed"]');
 
-        if (placesAfterScroll.length > countBefore) {
-          console.log("   ✅ Scroll working - more places loaded");
-        } else {
-          console.log(
-            "   ⚠️  No new places after scroll (may be at end of list)"
-          );
+            if (!scrollContainer) {
+              // Find the scrollable div that contains places
+              const allDivs = Array.from(document.querySelectorAll('div'));
+              scrollContainer = allDivs.find(div => {
+                const style = window.getComputedStyle(div);
+                return (style.overflowY === 'scroll' || style.overflowY === 'auto') &&
+                       div.scrollHeight > div.clientHeight;
+              });
+            }
+
+            if (scrollContainer) {
+              const beforeScroll = scrollContainer.scrollTop;
+              scrollContainer.scrollTop = scrollContainer.scrollHeight;
+              const afterScroll = scrollContainer.scrollTop;
+              return {
+                found: true,
+                scrolled: afterScroll > beforeScroll,
+                scrollTop: afterScroll,
+                scrollHeight: scrollContainer.scrollHeight
+              };
+            } else {
+              window.scrollTo(0, document.body.scrollHeight);
+              return { found: false };
+            }
+          });
+
+          console.log(`   Scroll attempt ${i + 1}: ${scrollInfo.found ? `scrollTop=${scrollInfo.scrollTop}` : 'No container found, using window scroll'}`);
+
+          await page.waitForTimeout(2000);
+
+          const realPlacesAfter = await page.$$eval("div.m6QErb.XiKgde", (items) => {
+            return items.filter(item => !!item.querySelector("button.SMP2wb.fHEb6e")).length;
+          });
+
+          console.log(`   After scroll ${i + 1}: ${realPlacesAfter} real places`);
+
+          if (realPlacesAfter > realPlacesBefore) {
+            console.log(`   ✅ Loaded ${realPlacesAfter - realPlacesBefore} more places`);
+            realPlacesBefore = realPlacesAfter;
+          } else {
+            console.log("   ⏸️  No new places loaded (may have reached end)");
+            break;
+          }
         }
+
+        // Final summary
+        const totalContainers = await page.$$eval("div.m6QErb.XiKgde", items => items.length);
+        const totalRealPlaces = await page.$$eval("div.m6QErb.XiKgde", (items) => {
+          return items.filter(item => !!item.querySelector("button.SMP2wb.fHEb6e")).length;
+        });
+
+        console.log(`\n   📊 Final stats:`);
+        console.log(`   Total containers: ${totalContainers}`);
+        console.log(`   Real places: ${totalRealPlaces}`);
+        console.log(`   Non-place items filtered: ${totalContainers - totalRealPlaces}`);
+        console.log(`   ✅ Virtualization handling: ${totalRealPlaces > 5 ? 'WORKING' : 'NEEDS MORE SCROLLING'}`);
       }
     }
 
