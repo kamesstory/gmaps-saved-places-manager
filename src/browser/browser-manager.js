@@ -1,6 +1,8 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const os = require('os');
+const config = require('../config');
+const selectors = require('./selectors');
 
 class BrowserManager {
   constructor(userDataDir = null, useRealProfile = false) {
@@ -64,22 +66,22 @@ class BrowserManager {
 
     // Wait for page to load
     console.log('Waiting for Maps to load...');
-    await this.page.waitForTimeout(5000);
+    await this.page.waitForTimeout(config.TIMEOUTS.MAPS_PAGE_LOAD);
 
     // Now click the "Saved" button
     console.log('Clicking "Saved" button...');
 
     try {
       // Wait for the Saved button to appear
-      await this.page.waitForSelector('button.wR3cXd.fontLabelMedium', { timeout: 10000 });
+      await this.page.waitForSelector(selectors.SAVED_BUTTON, { timeout: config.TIMEOUTS.SAVED_BUTTON_WAIT });
 
-      // Find the Saved button by jsaction
-      const savedButton = await this.page.$('button[jsaction*="navigationrail.saved"]');
+      // Find the Saved button
+      const savedButton = await this.page.$(selectors.SAVED_BUTTON);
 
       if (savedButton) {
         await savedButton.click();
         console.log('✅ Clicked Saved button');
-        await this.page.waitForTimeout(5000); // Wait for saved places to load
+        await this.page.waitForTimeout(config.TIMEOUTS.MAPS_PAGE_LOAD);
       } else {
         throw new Error('Could not find Saved button');
       }

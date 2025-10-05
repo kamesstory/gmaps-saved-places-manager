@@ -1,5 +1,6 @@
 const ChangeDetector = require("./change-detector");
 const Merger = require("./merger");
+const config = require("../config");
 
 /**
  * Sync Orchestrator - Coordinates the bidirectional sync process
@@ -77,7 +78,7 @@ class SyncOrchestrator {
           console.log(`  ✓ Navigated back to lists\n`);
 
           // Random delay between lists
-          await this.scraper.browser.randomDelay(1000, 2000);
+          await this.scraper.browser.randomDelay(config.DELAYS.BETWEEN_LISTS_MIN, config.DELAYS.BETWEEN_LISTS_MAX);
         } catch (error) {
           console.error(`  ❌ Error scraping list ${listName}:`, error.message);
           failedLists.push(listName);
@@ -298,7 +299,7 @@ class SyncOrchestrator {
           await this.scraper.navigateBackToLists();
           console.log(`  ✓ Navigated back to lists\n`);
 
-          await this.scraper.browser.randomDelay(2000, 4000);
+          await this.scraper.browser.randomDelay(config.DELAYS.BETWEEN_LISTS_FULL_MIN, config.DELAYS.BETWEEN_LISTS_FULL_MAX);
         } catch (error) {
           console.error(`  ❌ Error scraping list ${listName}:`, error.message);
           failedLists.push(listName);

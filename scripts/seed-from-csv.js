@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('../src/db');
+const config = require('../src/config');
 
 /**
  * Parse CSV content into array of objects
@@ -102,17 +103,10 @@ async function main() {
     let totalDuplicates = 0;
     const stats = [];
 
-    // Map CSV filenames to actual list names on Google Maps
-    const listNameMapping = {
-      'Favorite places': 'Favorites',
-      'Default list': 'Travel plans',
-      'Jason_s Vienna Research': "Jason's Vienna Research"
-    };
-
     for (const file of files) {
       const csvName = path.basename(file, '.csv');
       // Use mapped name if it exists, otherwise use CSV filename
-      const listName = listNameMapping[csvName] || csvName;
+      const listName = config.CSV_NAME_MAPPINGS[csvName] || csvName;
 
       console.log(`\nProcessing: ${csvName}${csvName !== listName ? ` → ${listName}` : ''}`);
 

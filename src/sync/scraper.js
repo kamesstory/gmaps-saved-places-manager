@@ -1,3 +1,6 @@
+const config = require('../config');
+const selectors = require('../browser/selectors');
+
 class GoogleMapsScraper {
   constructor(browserManager, database) {
     this.browser = browserManager;
@@ -14,7 +17,7 @@ class GoogleMapsScraper {
     console.log('Fetching list names...');
 
     // Wait for lists to load
-    await this.page.waitForTimeout(3000);
+    await this.page.waitForTimeout(config.TIMEOUTS.LISTS_LOAD);
 
     // Find the "Lists you saved" header to know where shared lists start
     const sharedListsStartIndex = await this.page.evaluate(() => {
@@ -34,11 +37,8 @@ class GoogleMapsScraper {
       );
     });
 
-    // System lists to exclude (Google's default lists we can't manage)
-    const systemLists = ['Starred places', 'Saved places'];
-
     // Get all list buttons
-    const lists = await this.page.$$eval('button.CsEnBe', (buttons, cutoffIndex) => {
+    const lists = await this.page.$$eval(selectors.LIST_BUTTON_ALT, (buttons, cutoffIndex) => {
       return buttons
         .map((button, index) => {
           // Skip if this is in the shared lists section
@@ -53,7 +53,7 @@ class GoogleMapsScraper {
     }, sharedListsStartIndex);
 
     // Filter out system lists
-    const filteredLists = lists.filter(name => !systemLists.includes(name));
+    const filteredLists = lists.filter(name => !config.SYSTEM_LISTS.includes(name));
 
     console.log(`Found ${filteredLists.length} lists (excluding ${lists.length - filteredLists.length} shared/system lists)`);
     return filteredLists;
@@ -68,7 +68,7 @@ class GoogleMapsScraper {
       const backButton = await this.page.$('button[aria-label="Back"]');
       if (backButton) {
         await backButton.click();
-        await this.page.waitForTimeout(2000);
+        await this.page.waitForTimeout(config.TIMEOUTS.BACK_NAVIGATION);
       } else {
         // Fallback: click Saved button again
         await this.browser.navigateToSavedPlaces();
@@ -86,7 +86,7 @@ class GoogleMapsScraper {
     console.log(`Navigating to list: ${listName}`);
 
     // Get all list buttons
-    const listButtons = await this.page.$$('button.CsEnBe');
+    const listButtons = await this.page.$$(selectors.LIST_BUTTON_ALT);
 
     // Find the one matching our list name
     for (const button of listButtons) {
@@ -95,7 +95,7 @@ class GoogleMapsScraper {
         const text = await nameElement.textContent();
         if (text && text.trim() === listName) {
           await button.click();
-          await this.page.waitForTimeout(3000); // Wait for places to load
+          await this.page.waitForTimeout(config.TIMEOUTS.PLACES_LOAD);
           return true;
         }
       }
@@ -114,7 +114,9 @@ class GoogleMapsScraper {
 
     const places = [];
     let scrollAttempts = 0;
-    const maxScrollAttempts = limit ? Math.ceil(limit / 10) : 50; // Adjust based on items per scroll
+    const maxScrollAttempts = limit
+      ? Math.ceil(limit / config.SCROLL.ITEMS_PER_SCROLL)
+      : config.SCROLL.MAX_ATTEMPTS;
 
     // Find place containers - use jsaction attribute (more stable than specific classes)
     // All real places have buttons with jsaction containing "pane.wfvdle" and jslog with metadata
@@ -203,9 +205,9 @@ class GoogleMapsScraper {
 
       // Scroll down to load more (robust scroll strategy)
       const previousCount = places.length;
-      await this.page.evaluate(() => {
+      await this.page.evaluate((feedSelector) => {
         // Try multiple scroll container strategies
-        let scrollContainer = document.querySelector('[role="feed"]');
+        let scrollContainer = document.querySelector(feedSelector);
 
         if (!scrollContainer) {
           // Find the scrollable div that contains places
@@ -222,9 +224,9 @@ class GoogleMapsScraper {
         } else {
           window.scrollTo(0, document.body.scrollHeight);
         }
-      });
+      }, selectors.SCROLLABLE_FEED);
 
-      await this.browser.randomDelay(1500, 2500);
+      await this.browser.randomDelay(config.DELAYS.SCROLL_MIN, config.DELAYS.SCROLL_MAX);
 
       // Check if we got new items
       if (places.length === previousCount) {
