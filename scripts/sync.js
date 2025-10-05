@@ -17,29 +17,28 @@ async function main() {
   console.log('Google Maps Bidirectional Sync');
   console.log('='.repeat(60));
   console.log(`Sync type: ${fullSync ? 'DEEP (all places)' : 'QUICK (first 50/list)'}`);
-  console.log('\n⚠️  IMPORTANT: Close all Chrome windows before continuing!');
-  console.log('Press Ctrl+C to cancel, or wait 5 seconds to continue...\n');
   console.log('='.repeat(60));
 
-  // Give user time to close Chrome
-  await new Promise(resolve => setTimeout(resolve, 5000));
-
   const db = new Database();
-  const browserManager = new BrowserManager(null, true); // Use real Chrome profile
+  const browserManager = new BrowserManager(); // Use browser-data/ like test-scraper
   const scraper = new GoogleMapsScraper(browserManager, db);
   const syncOrchestrator = new SyncOrchestrator(scraper, db);
 
   try {
     // Initialize database
-    console.log('\n[1/3] Initializing database...');
+    console.log('\n[1/4] Initializing database...');
     db.init();
 
-    // Initialize browser and navigate
-    console.log('\n[2/3] Launching browser...');
-    await scraper.init();
+    // Launch browser
+    console.log('\n[2/4] Launching browser...');
+    scraper.page = await browserManager.launch(false);
+
+    // Navigate to saved places
+    console.log('\n[3/4] Navigating to Google Maps Saved Places...');
+    await browserManager.navigateToSavedPlaces();
 
     // Perform bidirectional sync
-    console.log('\n[3/3] Starting bidirectional sync...');
+    console.log('\n[4/4] Starting bidirectional sync...');
     const result = fullSync
       ? await syncOrchestrator.deepSync()
       : await syncOrchestrator.quickSync();
@@ -57,7 +56,7 @@ async function main() {
     process.exit(1);
   } finally {
     // Clean up
-    await scraper.close();
+    await browserManager.close();
     db.close();
   }
 }

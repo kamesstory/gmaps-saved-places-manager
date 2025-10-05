@@ -5,13 +5,6 @@ class GoogleMapsScraper {
     this.page = null;
   }
 
-  /**
-   * Initialize the scraper
-   */
-  async init() {
-    this.page = await this.browser.launch(false); // Non-headless for first login
-    await this.browser.navigateToSavedPlaces();
-  }
 
   /**
    * Get all list names from the saved places page
@@ -322,12 +315,6 @@ class GoogleMapsScraper {
     }
   }
 
-  /**
-   * Close the scraper
-   */
-  async close() {
-    await this.browser.close();
-  }
 }
 
 module.exports = GoogleMapsScraper;
