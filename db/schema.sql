@@ -22,9 +22,9 @@ CREATE TABLE IF NOT EXISTS places (
   deleted_locally BOOLEAN DEFAULT FALSE -- User deleted locally, needs push
 );
 
-CREATE INDEX idx_places_google_id ON places(google_place_id);
-CREATE INDEX idx_places_notes_hash ON places(notes_hash);
-CREATE INDEX idx_places_is_deleted ON places(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_places_google_id ON places(google_place_id);
+CREATE INDEX IF NOT EXISTS idx_places_notes_hash ON places(notes_hash);
+CREATE INDEX IF NOT EXISTS idx_places_is_deleted ON places(is_deleted);
 
 CREATE TABLE IF NOT EXISTS lists (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS lists (
   deleted_locally BOOLEAN DEFAULT FALSE
 );
 
-CREATE INDEX idx_lists_google_id ON lists(google_list_id);
-CREATE INDEX idx_lists_name ON lists(name);
+CREATE INDEX IF NOT EXISTS idx_lists_google_id ON lists(google_list_id);
+CREATE INDEX IF NOT EXISTS idx_lists_name ON lists(name);
 
 CREATE TABLE IF NOT EXISTS place_lists (
   place_id INTEGER NOT NULL,
@@ -58,9 +58,9 @@ CREATE TABLE IF NOT EXISTS place_lists (
   FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_place_lists_place ON place_lists(place_id);
-CREATE INDEX idx_place_lists_list ON place_lists(list_id);
-CREATE INDEX idx_place_lists_deleted ON place_lists(deleted_locally);
+CREATE INDEX IF NOT EXISTS idx_place_lists_place ON place_lists(place_id);
+CREATE INDEX IF NOT EXISTS idx_place_lists_list ON place_lists(list_id);
+CREATE INDEX IF NOT EXISTS idx_place_lists_deleted ON place_lists(deleted_locally);
 
 -- ============================================================================
 -- THREE-WAY MERGE: BASE STATE TRACKING
@@ -77,8 +77,8 @@ CREATE TABLE IF NOT EXISTS last_remote_state (
   PRIMARY KEY (entity_type, entity_id)
 );
 
-CREATE INDEX idx_last_remote_state_type ON last_remote_state(entity_type);
-CREATE INDEX idx_last_remote_state_synced ON last_remote_state(synced_at);
+CREATE INDEX IF NOT EXISTS idx_last_remote_state_type ON last_remote_state(entity_type);
+CREATE INDEX IF NOT EXISTS idx_last_remote_state_synced ON last_remote_state(synced_at);
 
 -- ============================================================================
 -- WRITE OPERATIONS QUEUE
@@ -108,8 +108,8 @@ CREATE TABLE IF NOT EXISTS pending_operations (
   completed_at TIMESTAMP
 );
 
-CREATE INDEX idx_pending_ops_status ON pending_operations(status);
-CREATE INDEX idx_pending_ops_retry ON pending_operations(next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_pending_ops_status ON pending_operations(status);
+CREATE INDEX IF NOT EXISTS idx_pending_ops_retry ON pending_operations(next_retry_at);
 
 -- ============================================================================
 -- SYNC LOGGING
@@ -130,5 +130,5 @@ CREATE TABLE IF NOT EXISTS sync_log (
   status TEXT  -- 'in_progress', 'success', 'partial', 'failed'
 );
 
-CREATE INDEX idx_sync_log_started ON sync_log(started_at);
-CREATE INDEX idx_sync_log_status ON sync_log(status);
+CREATE INDEX IF NOT EXISTS idx_sync_log_started ON sync_log(started_at);
+CREATE INDEX IF NOT EXISTS idx_sync_log_status ON sync_log(status);
