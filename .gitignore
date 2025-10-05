@@ -2,9 +2,9 @@
 node_modules/
 
 # Database
-db/*.db
-db/*.db-shm
-db/*.db-wal
+db/**/*.db
+db/**/*.db-shm
+db/**/*.db-wal
 
 # Browser data (contains login session)
 browser-data/
