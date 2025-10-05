@@ -62,7 +62,11 @@ class SyncOrchestrator {
           remoteState[listName] = places;
           stats.placesPulled += places.length;
 
-          console.log(`  ✓ Scraped ${places.length} places\n`);
+          console.log(`  ✓ Scraped ${places.length} places`);
+
+          // Navigate back to lists view for next iteration
+          await this.scraper.navigateBackToLists();
+          console.log(`  ✓ Navigated back to lists\n`);
 
           // Random delay between lists
           await this.scraper.browser.randomDelay(1000, 2000);
@@ -196,7 +200,11 @@ class SyncOrchestrator {
           remoteState[listName] = places;
           stats.placesPulled += places.length;
 
-          console.log(`  ✓ Scraped ${places.length} places\n`);
+          console.log(`  ✓ Scraped ${places.length} places`);
+
+          // Navigate back to lists view for next iteration
+          await this.scraper.navigateBackToLists();
+          console.log(`  ✓ Navigated back to lists\n`);
 
           await this.scraper.browser.randomDelay(2000, 4000);
         } catch (error) {

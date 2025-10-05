@@ -8,7 +8,7 @@ class GoogleMapsScraper {
 
   /**
    * Get all list names from the saved places page
-   * Uses stable attributes instead of CSS classes for robustness
+   * Excludes shared lists (under "Lists you saved" section)
    */
   async getListNames() {
     console.log('Fetching list names...');
@@ -16,46 +16,61 @@ class GoogleMapsScraper {
     // Wait for lists to load
     await this.page.waitForTimeout(3000);
 
-    // Find all list buttons - use jsaction attribute (more stable than classes)
-    const lists = await this.page.$$eval('button[jsaction*="pane.wfvdle"]', (buttons) => {
-      return buttons.map(button => {
-        // Try multiple strategies to extract list name
-        let name = null;
+    // Find the "Lists you saved" header to know where shared lists start
+    const sharedListsStartIndex = await this.page.evaluate(() => {
+      const headers = Array.from(document.querySelectorAll('h2 .fontHeadlineSmall'));
+      const sharedHeader = headers.find(h => h.textContent.includes('Lists you saved'));
 
-        // Strategy 1: Look for div with fontBodyLarge class
-        let nameElement = button.querySelector('div[class*="fontBodyLarge"]');
-        if (nameElement) {
-          name = nameElement.textContent.trim();
-        }
+      if (!sharedHeader) {
+        return -1; // No shared lists section
+      }
 
-        // Strategy 2: Find the largest text node in the button (likely the list name)
-        if (!name) {
-          const allDivs = Array.from(button.querySelectorAll('div'));
-          const textDivs = allDivs
-            .filter(div => div.textContent.length > 0 && div.textContent.length < 100)
-            .filter(div => !div.textContent.includes('·')) // Exclude metadata like "Private · 2,104 places"
-            .filter(div => !div.querySelector('*')); // No nested elements
+      // Find the index of the first button after this header
+      const allButtons = Array.from(document.querySelectorAll('button.CsEnBe'));
+      const headerPosition = sharedHeader.getBoundingClientRect().top;
 
-          if (textDivs.length > 0) {
-            // Get the first substantial text
-            name = textDivs[0].textContent.trim();
-          }
-        }
-
-        // Strategy 3: Get first line of button text
-        if (!name && button.textContent) {
-          const firstLine = button.textContent.trim().split('\n')[0];
-          if (firstLine && !firstLine.includes('·') && firstLine.length < 50) {
-            name = firstLine;
-          }
-        }
-
-        return name;
-      }).filter(Boolean);
+      return allButtons.findIndex(button =>
+        button.getBoundingClientRect().top > headerPosition
+      );
     });
 
-    console.log(`Found ${lists.length} lists:`, lists);
+    // Get all list buttons
+    const lists = await this.page.$$eval('button.CsEnBe', (buttons, cutoffIndex) => {
+      return buttons
+        .map((button, index) => {
+          // Skip if this is in the shared lists section
+          if (cutoffIndex !== -1 && index >= cutoffIndex) {
+            return null;
+          }
+
+          const nameElement = button.querySelector('div.Io6YTe.fontBodyLarge');
+          return nameElement ? nameElement.textContent.trim() : null;
+        })
+        .filter(Boolean);
+    }, sharedListsStartIndex);
+
+    console.log(`Found ${lists.length} lists (excluding shared)`);
     return lists;
+  }
+
+  /**
+   * Navigate back to the main Saved Places list view
+   */
+  async navigateBackToLists() {
+    // Click the back button or navigate to saved places URL
+    try {
+      const backButton = await this.page.$('button[aria-label="Back"]');
+      if (backButton) {
+        await backButton.click();
+        await this.page.waitForTimeout(2000);
+      } else {
+        // Fallback: click Saved button again
+        await this.browser.navigateToSavedPlaces();
+      }
+    } catch (error) {
+      console.warn('Could not navigate back, trying Saved button...');
+      await this.browser.navigateToSavedPlaces();
+    }
   }
 
   /**
@@ -64,15 +79,19 @@ class GoogleMapsScraper {
   async navigateToList(listName) {
     console.log(`Navigating to list: ${listName}`);
 
-    // Find the list button that contains this name
+    // Get all list buttons
     const listButtons = await this.page.$$('button.CsEnBe');
 
+    // Find the one matching our list name
     for (const button of listButtons) {
-      const text = await button.textContent();
-      if (text && text.includes(listName)) {
-        await button.click();
-        await this.page.waitForTimeout(3000); // Wait for places to load
-        return true;
+      const nameElement = await button.$('div.Io6YTe.fontBodyLarge');
+      if (nameElement) {
+        const text = await nameElement.textContent();
+        if (text && text.trim() === listName) {
+          await button.click();
+          await this.page.waitForTimeout(3000); // Wait for places to load
+          return true;
+        }
       }
     }
 
