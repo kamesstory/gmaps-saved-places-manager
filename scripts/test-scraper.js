@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const BrowserManager = require("../src/browser");
+const BrowserManager = require("../src/browser/browser-manager");
 
 /**
  * Test scraper - validates selectors without full sync
