@@ -234,9 +234,9 @@ class GoogleMapsScraper {
       throw new Error(`Could not navigate to list: ${listName}`);
     }
 
-    // Upsert list in database
-    const listResult = this.db.upsertList(listName);
-    const list = this.db.getListByName(listName);
+    // Upsert list in database (using new repository pattern)
+    this.db.lists.upsert(listName);
+    const list = this.db.lists.findByName(listName);
 
     // Scrape places (limit to 50 for incremental, unlimited for full)
     const limit = incremental ? 50 : null;
@@ -251,15 +251,15 @@ class GoogleMapsScraper {
           google_maps_url: place.google_maps_url,
           name: place.name,
           notes: place.notes,
-          last_modified: new Date().toISOString(),
           last_synced: new Date().toISOString()
         };
 
-        const result = this.db.upsertPlace(placeData);
-        const dbPlace = this.db.getPlaceByGoogleId(place.google_place_id);
+        // Repository automatically calculates notes_hash
+        this.db.places.upsert(placeData);
+        const dbPlace = this.db.places.findByGoogleId(place.google_place_id);
 
         // Associate place with list
-        this.db.addPlaceToList(dbPlace.id, list.id);
+        this.db.placeLists.add(dbPlace.id, list.id);
 
         savedCount++;
       } catch (error) {
@@ -300,7 +300,11 @@ class GoogleMapsScraper {
 
       // Complete sync
       const status = errors.length === 0 ? 'success' : (errors.length < lists.length ? 'partial' : 'failed');
-      this.db.completeSync(syncId, totalPlacesSynced, lists.length, errors.length > 0 ? errors : null, status);
+      this.db.completeSync(syncId, {
+        placesPulled: totalPlacesSynced,
+        status,
+        errors: errors.length > 0 ? errors : []
+      });
 
       console.log(`\n✓ Sync completed: ${totalPlacesSynced} places from ${lists.length} lists`);
       if (errors.length > 0) {
@@ -309,7 +313,11 @@ class GoogleMapsScraper {
 
       return { totalPlacesSynced, listsCount: lists.length, errors };
     } catch (error) {
-      this.db.completeSync(syncId, totalPlacesSynced, 0, [{ error: error.message }], 'failed');
+      this.db.completeSync(syncId, {
+        placesPulled: totalPlacesSynced,
+        status: 'failed',
+        errors: [{ error: error.message }]
+      });
       throw error;
     }
   }

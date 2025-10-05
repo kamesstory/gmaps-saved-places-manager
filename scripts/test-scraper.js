@@ -20,46 +20,15 @@ async function main() {
 
   try {
     // Launch browser
-    console.log("\n[1/4] Launching browser...");
+    console.log("\n[1/3] Launching browser...");
     page = await browserManager.launch(false);
 
-    // Navigate to saved places (goes to maps, then clicks Saved)
-    console.log("\n[2/4] Navigating to Google Maps...");
-
-    console.log("Going to google.com/maps...");
-    await page.goto("https://google.com/maps", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
-
-    console.log("Waiting for Maps to load...");
-    await page.waitForTimeout(5000);
-
-    console.log("Looking for Saved button...");
-    try {
-      const savedButton = await page.$(
-        'button[jsaction*="navigationrail.saved"]'
-      );
-
-      if (savedButton) {
-        console.log("Clicking Saved button...");
-        await savedButton.click();
-        await page.waitForTimeout(5000);
-        console.log("✅ Navigated to Saved places");
-      } else {
-        console.log(
-          "⚠️  Could not find Saved button - please click it manually"
-        );
-        await page.waitForTimeout(15000);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error: ${error.message}`);
-      console.log('Please click "Saved" manually in the browser');
-      await page.waitForTimeout(15000);
-    }
+    // Navigate to saved places using BrowserManager method
+    console.log("\n[2/3] Navigating to Google Maps Saved Places...");
+    await browserManager.navigateToSavedPlaces();
 
     // Test 1: Get list names
-    console.log("\n[3/4] Testing list detection...");
+    console.log("\n[3/3] Testing list detection...");
     console.log("-".repeat(60));
 
     const lists = await page.$$eval("button.CsEnBe", (buttons) => {
@@ -82,7 +51,7 @@ async function main() {
 
     // Test 2: Click "Want to go" list (or first list if not found)
     if (lists.length > 0) {
-      console.log("\n[4/4] Testing place detection...");
+      console.log("\nTesting place detection and scraping...");
       console.log("-".repeat(60));
 
       // Try to find "Want to go" list

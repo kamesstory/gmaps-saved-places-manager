@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const BrowserManager = require("../src/browser");
+const BrowserManager = require("../src/browser/browser-manager");
 
 /**
  * Debug script to inspect the actual structure of places

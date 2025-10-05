@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const GMapsDatabase = require('../src/database');
-const BrowserManager = require('../src/browser');
-const GoogleMapsScraper = require('../src/scraper');
+const Database = require('../src/db');
+const BrowserManager = require('../src/browser/browser-manager');
+const GoogleMapsScraper = require('../src/sync/scraper');
 
 /**
  * Main sync script
@@ -23,7 +23,7 @@ async function main() {
   // Give user time to close Chrome
   await new Promise(resolve => setTimeout(resolve, 5000));
 
-  const db = new GMapsDatabase();
+  const db = new Database();
   const browserManager = new BrowserManager(null, true); // Use real Chrome profile
   const scraper = new GoogleMapsScraper(browserManager, db);
 
