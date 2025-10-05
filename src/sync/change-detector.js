@@ -191,9 +191,10 @@ class ChangeDetector {
    * Detect all changes between local and remote for a specific list
    * @param {string} listName - Name of the list to check
    * @param {Array} remotePlaces - Places scraped from Google Maps
+   * @param {boolean} isIncremental - If true, only checks scraped places (no deletion detection)
    * @returns {Object} { notesChanges: [], associationChanges: [], conflicts: [] }
    */
-  detectChangesForList(listName, remotePlaces) {
+  detectChangesForList(listName, remotePlaces, isIncremental = false) {
     const list = this.db.lists.findByName(listName);
     if (!list) {
       throw new Error(`List not found: ${listName}`);
@@ -215,11 +216,11 @@ class ChangeDetector {
     const remotePlaceMap = new Map();
     remotePlaces.forEach(p => remotePlaceMap.set(p.google_place_id, p));
 
-    // Check all places that exist in either local or remote
-    const allPlaceIds = new Set([
-      ...localPlaceMap.keys(),
-      ...remotePlaceMap.keys()
-    ]);
+    // For incremental sync: only check scraped places (can't detect deletions)
+    // For full sync: check all places in both local and remote
+    const allPlaceIds = isIncremental
+      ? new Set([...remotePlaceMap.keys()])  // Only scraped places
+      : new Set([...localPlaceMap.keys(), ...remotePlaceMap.keys()]);  // All places
 
     for (const googlePlaceId of allPlaceIds) {
       const localPlace = localPlaceMap.get(googlePlaceId);

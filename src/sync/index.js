@@ -124,7 +124,8 @@ class SyncOrchestrator {
           console.log(`Detecting changes for: ${listName}`);
           const changes = this.changeDetector.detectChangesForList(
             listName,
-            remotePlaces
+            remotePlaces,
+            true  // isIncremental = true (only check scraped places)
           );
 
           allChanges.notesChanges.push(...changes.notesChanges);
@@ -344,7 +345,8 @@ class SyncOrchestrator {
         try {
           const changes = this.changeDetector.detectChangesForList(
             listName,
-            remotePlaces
+            remotePlaces,
+            false  // isIncremental = false (can detect deletions with full scrape)
           );
           allChanges.notesChanges.push(...changes.notesChanges);
           allChanges.associationChanges.push(...changes.associationChanges);
