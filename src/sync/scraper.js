@@ -8,7 +8,7 @@ class GoogleMapsScraper {
 
   /**
    * Get all list names from the saved places page
-   * Excludes shared lists (under "Lists you saved" section)
+   * Excludes shared lists (under "Lists you saved" section) and system lists
    */
   async getListNames() {
     console.log('Fetching list names...');
@@ -34,6 +34,9 @@ class GoogleMapsScraper {
       );
     });
 
+    // System lists to exclude (Google's default lists we can't manage)
+    const systemLists = ['Starred places', 'Saved places'];
+
     // Get all list buttons
     const lists = await this.page.$$eval('button.CsEnBe', (buttons, cutoffIndex) => {
       return buttons
@@ -49,8 +52,11 @@ class GoogleMapsScraper {
         .filter(Boolean);
     }, sharedListsStartIndex);
 
-    console.log(`Found ${lists.length} lists (excluding shared)`);
-    return lists;
+    // Filter out system lists
+    const filteredLists = lists.filter(name => !systemLists.includes(name));
+
+    console.log(`Found ${filteredLists.length} lists (excluding ${lists.length - filteredLists.length} shared/system lists)`);
+    return filteredLists;
   }
 
   /**

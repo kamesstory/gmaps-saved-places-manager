@@ -12,17 +12,21 @@ const SyncOrchestrator = require('../src/sync');
 async function main() {
   const args = process.argv.slice(2);
   const fullSync = args.includes('--full');
+  const dryRun = args.includes('--dry-run');
 
   console.log('='.repeat(60));
   console.log('Google Maps Bidirectional Sync');
   console.log('='.repeat(60));
   console.log(`Sync type: ${fullSync ? 'DEEP (all places)' : 'QUICK (first 50/list)'}`);
+  if (dryRun) {
+    console.log('Mode: DRY-RUN (preview only, no changes will be applied)');
+  }
   console.log('='.repeat(60));
 
   const db = new Database();
   const browserManager = new BrowserManager(); // Use browser-data/ like test-scraper
   const scraper = new GoogleMapsScraper(browserManager, db);
-  const syncOrchestrator = new SyncOrchestrator(scraper, db);
+  const syncOrchestrator = new SyncOrchestrator(scraper, db, { dryRun });
 
   try {
     // Initialize database

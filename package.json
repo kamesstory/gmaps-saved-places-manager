@@ -5,6 +5,8 @@
   "scripts": {
     "sync": "node scripts/sync.js",
     "sync:full": "node scripts/sync.js --full",
+    "sync:dry-run": "node scripts/sync.js --dry-run",
+    "sync:full:dry-run": "node scripts/sync.js --full --dry-run",
     "seed": "node scripts/seed-from-csv.js",
     "inspect": "node scripts/inspect-simple.js",
     "test": "node scripts/test-scraper.js",

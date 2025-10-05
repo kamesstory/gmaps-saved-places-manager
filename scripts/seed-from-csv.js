@@ -102,9 +102,19 @@ async function main() {
     let totalDuplicates = 0;
     const stats = [];
 
+    // Map CSV filenames to actual list names on Google Maps
+    const listNameMapping = {
+      'Favorite places': 'Favorites',
+      'Default list': 'Travel plans',
+      'Jason_s Vienna Research': "Jason's Vienna Research"
+    };
+
     for (const file of files) {
-      const listName = path.basename(file, '.csv');
-      console.log(`\nProcessing: ${listName}`);
+      const csvName = path.basename(file, '.csv');
+      // Use mapped name if it exists, otherwise use CSV filename
+      const listName = listNameMapping[csvName] || csvName;
+
+      console.log(`\nProcessing: ${csvName}${csvName !== listName ? ` → ${listName}` : ''}`);
 
       // Read and parse CSV
       const filePath = path.join(seedDir, file);
@@ -113,7 +123,7 @@ async function main() {
 
       console.log(`  Found ${places.length} places in CSV`);
 
-      // Create/get list
+      // Create/get list (using the mapped name)
       db.lists.upsert(listName);
       const list = db.lists.findByName(listName);
 

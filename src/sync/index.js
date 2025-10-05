@@ -12,11 +12,12 @@ const Merger = require("./merger");
  * 5. UPDATE: Save new base state
  */
 class SyncOrchestrator {
-  constructor(scraper, db) {
+  constructor(scraper, db, options = {}) {
     this.scraper = scraper;
     this.db = db;
     this.changeDetector = new ChangeDetector(db);
     this.merger = new Merger(db);
+    this.dryRun = options.dryRun || false;
   }
 
   /**
@@ -45,6 +46,7 @@ class SyncOrchestrator {
       console.log(`Found ${lists.length} lists\n`);
 
       const remoteState = {};
+      const failedLists = [];
 
       for (const listName of lists) {
         try {
@@ -53,7 +55,13 @@ class SyncOrchestrator {
           // Navigate to list
           const navigated = await this.scraper.navigateToList(listName);
           if (!navigated) {
-            console.warn(`  ⚠️  Could not navigate to list: ${listName}`);
+            console.error(`  ❌ Could not navigate to list: ${listName}`);
+            failedLists.push(listName);
+            stats.errors.push({
+              list: listName,
+              phase: "pull",
+              error: "Failed to navigate to list",
+            });
             continue;
           }
 
@@ -72,6 +80,7 @@ class SyncOrchestrator {
           await this.scraper.browser.randomDelay(1000, 2000);
         } catch (error) {
           console.error(`  ❌ Error scraping list ${listName}:`, error.message);
+          failedLists.push(listName);
           stats.errors.push({
             list: listName,
             phase: "pull",
@@ -79,6 +88,25 @@ class SyncOrchestrator {
           });
         }
       }
+
+      // Validate PULL phase - abort if any list failed
+      console.log("\n📊 PULL VALIDATION");
+      console.log("-".repeat(60));
+      console.log(`✓ Successfully scraped: ${Object.keys(remoteState).length}/${lists.length} lists`);
+
+      if (failedLists.length > 0) {
+        console.error(`❌ Failed to scrape: ${failedLists.length} lists`);
+        failedLists.forEach(list => console.error(`   - ${list}`));
+        console.error("\n❌ ABORTING: Cannot proceed with incomplete remote state.");
+        console.error("   Incomplete state would cause incorrect change detection.");
+        console.error("   Please check network connection and try again.\n");
+
+        stats.status = "failed";
+        this.db.completeSync(syncId, stats);
+        throw new Error(`Pull phase failed: ${failedLists.length} lists could not be scraped`);
+      }
+
+      console.log("✅ All lists scraped successfully. Proceeding to change detection.\n");
 
       // PHASE 2: DETECT - Find changes
       console.log("\n🔍 PHASE 2: DETECT (Comparing states)");
@@ -120,11 +148,66 @@ class SyncOrchestrator {
 
       stats.conflictsDetected = allChanges.conflicts.length;
 
-      // PHASE 3: MERGE - Apply changes
+      // PHASE 3: MERGE - Apply changes (or show preview if dry-run)
       console.log("\n🔀 PHASE 3: MERGE (Applying changes)");
       console.log("-".repeat(60));
 
-      const mergeResult = this.merger.applyChanges(allChanges);
+      let mergeResult;
+      if (this.dryRun) {
+        console.log("🔍 DRY-RUN MODE: Showing what would change (no modifications)\n");
+
+        // Show notes changes
+        if (allChanges.notesChanges.length > 0) {
+          console.log(`📝 Notes changes (${allChanges.notesChanges.length}):`);
+          allChanges.notesChanges.slice(0, 10).forEach(change => {
+            const place = this.db.places.findById(change.placeId);
+            console.log(`  • ${place?.name || 'Unknown'} (${change.resolution})`);
+            if (change.localValue) console.log(`    Local:  "${change.localValue.substring(0, 50)}..."`);
+            if (change.remoteValue) console.log(`    Remote: "${change.remoteValue.substring(0, 50)}..."`);
+          });
+          if (allChanges.notesChanges.length > 10) {
+            console.log(`  ... and ${allChanges.notesChanges.length - 10} more`);
+          }
+        }
+
+        // Show association changes
+        if (allChanges.associationChanges.length > 0) {
+          console.log(`\n🔗 Association changes (${allChanges.associationChanges.length}):`);
+          allChanges.associationChanges.slice(0, 10).forEach(change => {
+            const place = this.db.places.findById(change.placeId);
+            const list = this.db.lists.findById(change.listId);
+            console.log(`  • ${place?.name || 'Unknown'} ↔ ${list?.name || 'Unknown'} (${change.resolution})`);
+          });
+          if (allChanges.associationChanges.length > 10) {
+            console.log(`  ... and ${allChanges.associationChanges.length - 10} more`);
+          }
+        }
+
+        // Show conflicts
+        if (allChanges.conflicts.length > 0) {
+          console.log(`\n⚠️  Conflicts (${allChanges.conflicts.length}):`);
+          allChanges.conflicts.forEach(conflict => {
+            console.log(`  • ${conflict.entity} conflict (local wins)`);
+          });
+        }
+
+        if (allChanges.notesChanges.length === 0 &&
+            allChanges.associationChanges.length === 0 &&
+            allChanges.conflicts.length === 0) {
+          console.log("✅ No changes detected - everything is in sync!");
+        }
+
+        console.log("\n⚠️  DRY-RUN: No changes were actually applied.");
+        console.log("   Run without --dry-run to apply these changes.\n");
+
+        mergeResult = {
+          applied: 0,
+          conflicts: allChanges.conflicts.length,
+          wouldApply: allChanges.notesChanges.length + allChanges.associationChanges.length
+        };
+      } else {
+        mergeResult = this.merger.applyChanges(allChanges);
+      }
 
       // PHASE 4: PUSH - Execute pending operations (placeholder for now)
       console.log("\n📤 PHASE 4: PUSH (Executing pending operations)");
@@ -183,7 +266,10 @@ class SyncOrchestrator {
       console.log("⚠️  This may take a while...\n");
 
       const lists = await this.scraper.getListNames();
+      console.log(`Found ${lists.length} lists\n`);
+
       const remoteState = {};
+      const failedLists = [];
 
       for (const listName of lists) {
         try {
@@ -191,7 +277,13 @@ class SyncOrchestrator {
 
           const navigated = await this.scraper.navigateToList(listName);
           if (!navigated) {
-            console.warn(`  ⚠️  Could not navigate to list: ${listName}`);
+            console.error(`  ❌ Could not navigate to list: ${listName}`);
+            failedLists.push(listName);
+            stats.errors.push({
+              list: listName,
+              phase: "pull",
+              error: "Failed to navigate to list",
+            });
             continue;
           }
 
@@ -209,6 +301,7 @@ class SyncOrchestrator {
           await this.scraper.browser.randomDelay(2000, 4000);
         } catch (error) {
           console.error(`  ❌ Error scraping list ${listName}:`, error.message);
+          failedLists.push(listName);
           stats.errors.push({
             list: listName,
             phase: "pull",
@@ -216,6 +309,25 @@ class SyncOrchestrator {
           });
         }
       }
+
+      // Validate PULL phase - abort if any list failed
+      console.log("\n📊 PULL VALIDATION");
+      console.log("-".repeat(60));
+      console.log(`✓ Successfully scraped: ${Object.keys(remoteState).length}/${lists.length} lists`);
+
+      if (failedLists.length > 0) {
+        console.error(`❌ Failed to scrape: ${failedLists.length} lists`);
+        failedLists.forEach(list => console.error(`   - ${list}`));
+        console.error("\n❌ ABORTING: Cannot proceed with incomplete remote state.");
+        console.error("   Incomplete state would cause incorrect change detection.");
+        console.error("   Please check network connection and try again.\n");
+
+        stats.status = "failed";
+        this.db.completeSync(syncId, stats);
+        throw new Error(`Pull phase failed: ${failedLists.length} lists could not be scraped`);
+      }
+
+      console.log("✅ All lists scraped successfully. Proceeding to change detection.\n");
 
       // PHASE 2-4: Same as quick sync
       console.log("\n🔍 PHASE 2: DETECT (Comparing states)");
@@ -254,7 +366,62 @@ class SyncOrchestrator {
       console.log("\n🔀 PHASE 3: MERGE (Applying changes)");
       console.log("-".repeat(60));
 
-      const mergeResult = this.merger.applyChanges(allChanges);
+      let mergeResult;
+      if (this.dryRun) {
+        console.log("🔍 DRY-RUN MODE: Showing what would change (no modifications)\n");
+
+        // Show notes changes
+        if (allChanges.notesChanges.length > 0) {
+          console.log(`📝 Notes changes (${allChanges.notesChanges.length}):`);
+          allChanges.notesChanges.slice(0, 10).forEach(change => {
+            const place = this.db.places.findById(change.placeId);
+            console.log(`  • ${place?.name || 'Unknown'} (${change.resolution})`);
+            if (change.localValue) console.log(`    Local:  "${change.localValue.substring(0, 50)}..."`);
+            if (change.remoteValue) console.log(`    Remote: "${change.remoteValue.substring(0, 50)}..."`);
+          });
+          if (allChanges.notesChanges.length > 10) {
+            console.log(`  ... and ${allChanges.notesChanges.length - 10} more`);
+          }
+        }
+
+        // Show association changes
+        if (allChanges.associationChanges.length > 0) {
+          console.log(`\n🔗 Association changes (${allChanges.associationChanges.length}):`);
+          allChanges.associationChanges.slice(0, 10).forEach(change => {
+            const place = this.db.places.findById(change.placeId);
+            const list = this.db.lists.findById(change.listId);
+            console.log(`  • ${place?.name || 'Unknown'} ↔ ${list?.name || 'Unknown'} (${change.resolution})`);
+          });
+          if (allChanges.associationChanges.length > 10) {
+            console.log(`  ... and ${allChanges.associationChanges.length - 10} more`);
+          }
+        }
+
+        // Show conflicts
+        if (allChanges.conflicts.length > 0) {
+          console.log(`\n⚠️  Conflicts (${allChanges.conflicts.length}):`);
+          allChanges.conflicts.forEach(conflict => {
+            console.log(`  • ${conflict.entity} conflict (local wins)`);
+          });
+        }
+
+        if (allChanges.notesChanges.length === 0 &&
+            allChanges.associationChanges.length === 0 &&
+            allChanges.conflicts.length === 0) {
+          console.log("✅ No changes detected - everything is in sync!");
+        }
+
+        console.log("\n⚠️  DRY-RUN: No changes were actually applied.");
+        console.log("   Run without --dry-run to apply these changes.\n");
+
+        mergeResult = {
+          applied: 0,
+          conflicts: allChanges.conflicts.length,
+          wouldApply: allChanges.notesChanges.length + allChanges.associationChanges.length
+        };
+      } else {
+        mergeResult = this.merger.applyChanges(allChanges);
+      }
 
       console.log("\n📤 PHASE 4: PUSH (Executing pending operations)");
       console.log("-".repeat(60));
