@@ -3,9 +3,10 @@
 const Database = require('../src/db');
 const BrowserManager = require('../src/browser/browser-manager');
 const GoogleMapsScraper = require('../src/sync/scraper');
+const SyncOrchestrator = require('../src/sync');
 
 /**
- * Main sync script
+ * Main sync script - Bidirectional sync with three-way merge
  * Usage: node scripts/sync.js [--full]
  */
 async function main() {
@@ -13,9 +14,9 @@ async function main() {
   const fullSync = args.includes('--full');
 
   console.log('='.repeat(60));
-  console.log('Google Maps Saved Places Sync');
+  console.log('Google Maps Bidirectional Sync');
   console.log('='.repeat(60));
-  console.log(`Sync type: ${fullSync ? 'FULL' : 'INCREMENTAL'}`);
+  console.log(`Sync type: ${fullSync ? 'DEEP (all places)' : 'QUICK (first 50/list)'}`);
   console.log('\n⚠️  IMPORTANT: Close all Chrome windows before continuing!');
   console.log('Press Ctrl+C to cancel, or wait 5 seconds to continue...\n');
   console.log('='.repeat(60));
@@ -26,6 +27,7 @@ async function main() {
   const db = new Database();
   const browserManager = new BrowserManager(null, true); // Use real Chrome profile
   const scraper = new GoogleMapsScraper(browserManager, db);
+  const syncOrchestrator = new SyncOrchestrator(scraper, db);
 
   try {
     // Initialize database
@@ -36,22 +38,16 @@ async function main() {
     console.log('\n[2/3] Launching browser...');
     await scraper.init();
 
-    // Perform sync
-    console.log('\n[3/3] Starting sync...');
-    const result = await scraper.syncAllLists(!fullSync);
-
-    console.log('\n' + '='.repeat(60));
-    console.log('SYNC COMPLETE');
-    console.log('='.repeat(60));
-    console.log(`Places synced: ${result.totalPlacesSynced}`);
-    console.log(`Lists synced: ${result.listsCount}`);
-    console.log(`Errors: ${result.errors.length}`);
-    console.log('='.repeat(60));
+    // Perform bidirectional sync
+    console.log('\n[3/3] Starting bidirectional sync...');
+    const result = fullSync
+      ? await syncOrchestrator.deepSync()
+      : await syncOrchestrator.quickSync();
 
     if (result.errors.length > 0) {
-      console.log('\nErrors encountered:');
+      console.log('\n⚠️  Errors encountered:');
       result.errors.forEach((err, i) => {
-        console.log(`  ${i + 1}. ${err.listName || 'Unknown'}: ${err.error}`);
+        console.log(`  ${i + 1}. ${err.list || 'Unknown'} [${err.phase}]: ${err.error}`);
       });
     }
 
